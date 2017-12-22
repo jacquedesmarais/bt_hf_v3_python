@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='UTF-8'>
+    <title>BT Integration</title>
+     <link rel='stylesheet' type='text/css' href='static/css/styles.css' media='screen'>
+    <link rel="icon" href="http://www.webtoolswiki.com/wp-content/uploads/2015/01/braintree1.jpeg">
+  </head>
+
+  <body>
+    <!--Begin Body-->
+
+
+
+    <div id="main_wrapper">
+        <div id="main_container">
+          <div id="title">Braintree Payments</div>
+          <!-- You're Ready For Integration Training! -->
+          <div id='form_container'>
+            <!-- <img src='https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif' id='image_cat'> -->
+
+            <!-- Integrations will go here! -->
+            <form action="/checkout" id="hosted-fields-form" method="post">
+
+                  <label for="first-name">First Name</label><br>
+                  <input type="text" name="first_name" class="hosted-field" id="first_name"></input><br>
+
+                  <label for="email">Email</label><br>
+                  <input type="text" name="email" class="hosted-field" id="email"></input><br>
+
+                  <label for="amount">Amount</label><br>
+                  <input type="number" name="amount" class="hosted-field" id="amount"></input><br>
+
+                  <label for="card-number">Card Number</label>
+                  <div id="card-number" class="hosted-field"></div>
+
+                  <label for="cvv">CVV</label>
+                  <div id="cvv" class="hosted-field"></div>
+
+                  <label for="expiration-date">Expiration Date</label>
+                  <div id="expiration-date" class="hosted-field"></div>
+
+                  <label for="postal-code">Postal Code</label>
+                  <div id="postal-code" class="hosted-field"></div>
+
+                  <input type="submit" value="Pay"  class="pay-button" disabled />
+                  <input id="payment_method_nonce" name="payment_method_nonce" hidden>
+                  <input id="data_collector" name="data_collector" hidden><br>
+
+                  <br><div id="paypal-button" class="paypal-button"></div>
+          </div>
+        </div>
+    </div>
+
+
+
+  </body>
+  <script src="https://js.braintreegateway.com/web/3.26.0/js/client.min.js"></script>
+  <script src="https://js.braintreegateway.com/web/3.26.0/js/hosted-fields.min.js"></script>
+  <script src="https://js.braintreegateway.com/web/3.26.0/js/data-collector.min.js"></script>
+  <script src="https://js.braintreegateway.com/web/3.26.0/js/three-d-secure.min.js"></script>
+  <script src="https://www.paypalobjects.com/api/checkout.js" data-version-4 log-level="warn"></script>
+  <script src="https://js.braintreegateway.com/web/3.26.0/js/paypal-checkout.min.js"></script>
+
+  <script>
+        var form = document.querySelector('#hosted-fields-form');
+        var submit = document.querySelector('input[type="submit"]');
+        var threeDSecure;
+
+        braintree.client.create({
+          authorization: '{{ client_token }}'
+        }, function (clientErr, clientInstance) {
+          if (clientErr) {
+            console.error(clientErr);
+            return;
+          }
+          console.log(clientInstance);
+
+          braintree.threeDSecure.create({
+            client: clientInstance
+          }, function (threeDSecureErr, threeDSecureInstance) {
+            if (threeDSecureErr) {
+              console.log(threeDSecureErr);
+              return;
+            }
+
+            threeDSecure = threeDSecureInstance;
+            console.log(threeDSecure);
+          });
+
+          braintree.dataCollector.create({
+             client: clientInstance,
+             kount: true
+           }, function (err, dataCollectorInstance) {
+             if (err) {
+               // Handle error in creation of data collector
+               return;
+             }
+             // At this point, you should access the dataCollectorInstance.deviceData value and provide it
+             // to your server, e.g. by injecting it into your form as a hidden input.
+             var deviceData = dataCollectorInstance.deviceData;
+             document.querySelector("#data_collector").value = deviceData;
+             console.log(dataCollectorInstance);
+
+             braintree.paypalCheckout.create({
+               client: clientInstance
+             }, function (paypalCheckoutErr, paypalCheckoutInstance) {
+
+               // Stop if there was a problem creating PayPal Checkout.
+               // This could happen if there was a network error or if it's incorrectly
+               // configured.
+               if (paypalCheckoutErr) {
+                 console.error('Error creating PayPal Checkout:', paypalCheckoutErr);
+                 return;
+               }
+
+               // Set up PayPal with the checkout.js library
+               paypal.Button.render({
+                 env: 'sandbox', // Or 'sandbox'
+                 commit: true, // This will add the transaction amount to the PayPal button
+
+                 payment: function () {
+                   return paypalCheckoutInstance.createPayment({
+                     flow: 'checkout', // Required
+                     amount: '10.00', // Required
+                     currency: 'USD', // Required
+                     enableShippingAddress: true,
+                     shippingAddressEditable: false,
+                     shippingAddressOverride: {
+                       recipientName: 'Scruff McGruff',
+                       line1: '1234 Main St.',
+                       line2: 'Unit 1',
+                       city: 'Chicago',
+                       countryCode: 'US',
+                       postalCode: '60652',
+                       state: 'IL',
+                       phone: '123.456.7890'
+                     }
+                   });
+                 },
+
+                 onAuthorize: function (data, actions) {
+                   return paypalCheckoutInstance.tokenizePayment(data)
+                     .then(function (payload) {
+                       // Submit `payload.nonce` to your server
+                     });
+                 },
+
+                 onCancel: function (data) {
+                   console.log('checkout.js payment cancelled', JSON.stringify(data, 0, 2));
+                 },
+
+                 onError: function (err) {
+                   console.error('checkout.js error', err);
+                 }
+               }, '#paypal-button').then(function () {
+                 // The PayPal button will be rendered in an html element with the id
+                 // `paypal-button`. This function will be called when the PayPal button
+                 // is set up and ready to be used.
+               });
+             });
+         });
+
+
+          // This example shows Hosted Fields, but you can also use this
+          // client instance to create additional components here, such as
+          // PayPal or Data Collector.
+
+          braintree.hostedFields.create({
+            client: clientInstance,
+            styles: {
+              'input': {
+                'font-size': '14px'
+              },
+              'input.invalid': {
+                'color': 'red'
+              },
+              'input.valid': {
+                'color': 'green'
+              }
+            },
+            fields: {
+              number: {
+                selector: '#card-number',
+                placeholder: '4111 1111 1111 1111'
+              },
+              cvv: {
+                selector: '#cvv',
+                placeholder: '123'
+              },
+              expirationDate: {
+                selector: '#expiration-date',
+                placeholder: '10/2019'
+              },
+              postalCode: {
+                selector: '#postal-code',
+                placeholder: '12345'
+              }
+            }
+          }, function (hostedFieldsErr, hostedFieldsInstance) {
+            if (hostedFieldsErr) {
+              console.error(hostedFieldsErr);
+              return;
+            }
+            console.log(hostedFieldsInstance);
+            submit.removeAttribute('disabled');
+            document.querySelector("#first_name").placeholder = "First Name"
+            document.querySelector("#email").placeholder = "Email"
+            document.querySelector("#amount").placeholder = "Amount"
+
+            form.addEventListener('submit', function (event) {
+              event.preventDefault();
+              console.log(event);
+
+              hostedFieldsInstance.tokenize(function (tokenizeErr, payload) {
+                if (tokenizeErr) {
+                  console.error(tokenizeErr);
+                  return;
+                }
+                console.log(payload);
+
+                // If this was a real integration, this is where you would
+                // send the nonce to your server.
+                console.log('Got a nonce: ' + payload.nonce);
+                // document.querySelector("#payment_method_nonce").value = payload.nonce;
+
+                var my3DSContainer = document.createElement('div');
+
+                threeDSecure.verifyCard({
+                  amount: '500.00',
+                  nonce: payload.nonce,
+                  addFrame: function (err, iframe) {
+                    // Set up your UI and add the iframe.
+                    my3DSContainer.appendChild(iframe);
+                    document.body.appendChild(my3DSContainer);
+                  },
+                  removeFrame: function () {
+                    // Remove UI that you added in addFrame.
+                    document.body.removeChild(my3DSContainer);
+                  }
+                }, function (err, response) {
+                  // Send response.nonce to use in your transaction
+                  console.log(response);
+                  document.querySelector("#payment_method_nonce").value = response.nonce;
+
+                  form.submit();
+                });
+              });
+            }, false);
+          });
+        });
+  </script>
+
+</html>
